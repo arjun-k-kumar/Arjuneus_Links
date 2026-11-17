@@ -1,0 +1,33 @@
+name: Refresh Instagram feed
+on:
+  schedule:
+    - cron: "0 14 * * *"   # every day, 7am Pacific
+  workflow_dispatch:        # lets you run it by hand from the Actions tab
+permissions:
+  contents: write
+jobs:
+  feed:
+    runs-on: ubuntu-latest
+    env:
+      HAS_PAT: ${{ secrets.GH_PAT != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Pull latest posts
+        run: python scripts/update_feed.py
+        env:
+          IG_TOKEN: ${{ secrets.IG_TOKEN }}
+      - name: Save refreshed token (only if Instagram issued a new one)
+        if: env.HAS_PAT == 'true' && hashFiles('.newtoken') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: gh secret set IG_TOKEN < .newtoken && rm .newtoken
+      - name: Commit new posts
+        run: |
+          rm -f .newtoken
+          git config user.name "feed-bot"
+          git config user.email "feed-bot@users.noreply.github.com"
+          git add feed
+          git diff --cached --quiet || git commit -m "Refresh Instagram feed"
+          git push
